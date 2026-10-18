@@ -1,5 +1,13 @@
 # Changelog
 
+## v.1.0.1 - 2026-10-18
+- Added tests for the JSON line, levels, sampling, caller, and the fatal exit status.
+- Rewrote the README around what InitLogging sets up.
+
+## v1.0.0 - 2026-10-18
+- Updated dependencies  (zerolog v1.35.1, go-colorable v0.1.14, golang.org/x/sys v0.29.0)
+- FatalCode and FatalError.Code now exit with the requested status. zerolog's Fatal hook was exiting 1 before that status ran. Fatal with no code still exits 1.
+
 ## v0.4.0 - 2025-08-12
 - Added JSON to stdout using LOG_CONSOLE_OUTPUT=json
 - Added LOG_FILE=false to disable file logging

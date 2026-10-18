@@ -1,29 +1,32 @@
 // Package prezerolog provides a fast, consistent logging wrapper around zerolog.
 //
+// InitLogging wires rotated JSON files, a console destination with its own level,
+// stable field names, UTC timestamps, the application caller, and optional sampling.
+// Call it once from main before other goroutines log.
+//
 // Features:
 // - JSON logs to rotated files (lumberjack)
-// - Colored console output in development or when DEBUG=true
-// - Normalized keys: time, level, msg, service, env, trace_id, span_id, request_id, caller, err
+// - Colored console text when console output is enabled (LOG_CONSOLE, default true)
+// - Normalized keys: time, level, msg, service, env, caller, err
 // - RFC3339Nano timestamps, forced UTC
-// - Context-aware correlation IDs (trace_id, span_id, request_id)
 // - Handles string (message), error, map[string]any, and struct args
-// - Fatal logs with stack in dev and app-defined exit code (default 1)
+// - Fatal logs a stack when the console is enabled, then exits with FatalCode or 1
 // - Optional sampling via LOG_SAMPLING_N (1 = no sampling)
 //
-// License: MIT - 2025 Philip Andersen
+// License: MIT - 2025-2026 Philip Andersen
 //
 // Env keys:
-// LOG_DIR=<folder name>                         (default: "logs")
-// LOG_NAME=<service name>                       (default: current dir)
-// LOG_ENV=production|development                (default: production)
-// LOG_FILE=true|false                           (default: true)
-// LOG_CONSOLE=true|false                        (default: true)
-// LOG_CONSOLE_LEVEL=trace|debug|info|warn       (default: info)
-// LOG_FILE_LEVEL=trace|debug|info|warn          (default: info)
-// LOG_CONSOLE_OUTPUT=minimal|full|extended|json (default: full)
-// LOG_SAMPLING_N=1                              (default: 1)
-// LOG_ROTATE_MAX_SIZE=100                       (default: 100)
-// LOG_ROTATE_MAX_BACKUPS=7                      (default: 7)
+// LOG_DIR=<folder name>                                      (default: "logs")
+// LOG_NAME=<service name>                                    (default: module, directory, or binary)
+// LOG_ENV=production|development                             (default: production)
+// LOG_FILE=true|false                                        (default: true)
+// LOG_CONSOLE=true|false                                     (default: true)
+// LOG_CONSOLE_LEVEL=trace|debug|info|warn|error|fatal|panic  (default: info)
+// LOG_FILE_LEVEL=trace|debug|info|warn|error|fatal|panic     (default: info)
+// LOG_CONSOLE_OUTPUT=minimal|full|extended|json              (default: full)
+// LOG_SAMPLING_N=1                                           (default: 1)
+// LOG_ROTATE_MAX_SIZE=100                                    (default: 100)
+// LOG_ROTATE_MAX_BACKUPS=7                                   (default: 7)
 
 package prezerolog
 
@@ -73,7 +76,10 @@ const (
 	CtxSpanID    ctxKey = "span_id"
 )
 
-var AppLogger *Logger
+var (
+	AppLogger *Logger
+	initMu    sync.Mutex
+)
 
 // ---------- Initialization ----------
 
@@ -304,25 +310,33 @@ func (l *Logger) ErrorCtx(ctx context.Context, args ...interface{}) {
 	l.logEventCtx(ctx, zerolog.ErrorLevel, args...)
 }
 
-// Fatal logs an error, includes a stack trace in development, and exits.
+// Fatal logs an error, includes a stack trace when console output is enabled, and exits.
+// WithLevel is used so zerolog does not os.Exit(1) itself; the exit status below is the one that runs.
 func (l *Logger) Fatal(args ...interface{}) {
 	message, fields, errVal := processLogArgs(args)
 	if l.consoleOut {
+		if fields == nil {
+			fields = make(map[string]interface{})
+		}
 		fields["stack"] = string(debug.Stack())
 	}
 
-	ev := log.Logger.Fatal()
-	if c := userCaller(); c != "" {
-		ev = ev.Str("caller", c)
-	}
-	ev = ev.Fields(fields)
-	if errVal != nil {
-		ev = ev.Err(errVal)
-	}
-	if message != "" {
-		ev.Msg(message)
-	} else {
-		ev.Send()
+	ev := log.Logger.WithLevel(zerolog.FatalLevel)
+	if ev != nil {
+		if c := userCaller(); c != "" {
+			ev = ev.Str("caller", c)
+		}
+		if len(fields) > 0 {
+			ev = ev.Fields(fields)
+		}
+		if errVal != nil {
+			ev = ev.Err(errVal)
+		}
+		if message != "" {
+			ev.Msg(message)
+		} else {
+			ev.Send()
+		}
 	}
 
 	// Default to generic failure unless caller specified a code
@@ -397,7 +411,7 @@ func (l *Logger) logEventCtx(ctx context.Context, level zerolog.Level, args ...i
 
 func processLogArgs(args []interface{}) (string, map[string]interface{}, error) {
 	var message string
-	fields := make(map[string]interface{})
+	var fields map[string]interface{}
 	var errVal error
 	for _, arg := range args {
 		switch v := arg.(type) {
@@ -406,14 +420,23 @@ func processLogArgs(args []interface{}) (string, map[string]interface{}, error) 
 		case error:
 			errVal = v
 		case map[string]interface{}:
+			if fields == nil {
+				fields = make(map[string]interface{})
+			}
 			mergeMap(fields, v)
 		case fmt.Stringer:
 			if message == "" {
 				message = v.String()
 			} else {
+				if fields == nil {
+					fields = make(map[string]interface{})
+				}
 				fields["value"] = v.String()
 			}
 		default:
+			if fields == nil {
+				fields = make(map[string]interface{})
+			}
 			mergeStruct(fields, v)
 		}
 	}
@@ -483,10 +506,15 @@ func isThisPackageFrame(pc uintptr, file string) bool {
 
 // ---------- Package-level shortcuts ----------
 
-// ensure makes sure AppLogger exists
+// ensure makes sure AppLogger exists.
+// A later InitLogging call still reconfigures; this only closes the race when two goroutines log before init.
 func ensure() *Logger {
 	if AppLogger == nil {
-		InitLogging()
+		initMu.Lock()
+		defer initMu.Unlock()
+		if AppLogger == nil {
+			InitLogging()
+		}
 	}
 	return AppLogger
 }
