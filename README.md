@@ -4,9 +4,11 @@
 [![License](https://img.shields.io/github/license/renegadevi/prezerolog)](https://github.com/renegadevi/prezerolog/blob/main/LICENSE)
 [![Release](https://img.shields.io/github/v/release/renegadevi/prezerolog)](https://github.com/renegadevi/prezerolog/releases)
 
-`InitLogging()` is the zerolog setup you would otherwise write by hand. One call gives you rotated JSON files, a console writer with its own level, stable field names, UTC timestamps, the caller of your log line, and optional sampling. The logging API stays `Info`, `Warn`, `Error`, `Debug`, and `Trace`.
+`InitLogging()` is the simple zerolog setup you would typically write by hand.
 
-What that call sets up:
+One call gives you rotated JSON files, a console writer with its own level, stable field names, UTC timestamps, the caller of your log line, and optional sampling. The logging is simple: `Info`, `Warn`, `Error`, `Debug`, and `Trace`
+
+## Features
 
 - JSON logs in `LOG_DIR`, rotated by size, with a backup count and gzip. Each process start gets a new `service_YYYY-MM-DDTHH-MM-SS_00.log`.
 - A console destination that is independent of the file. Text modes go to stderr. `json` mode writes the same JSON to stdout for collectors.
@@ -17,7 +19,7 @@ What that call sets up:
 - Arguments can be a string message, an `error` (logged as `err`), a `map[string]any`, an exported struct, or a `fmt.Stringer`.
 - `Fatal` exits 1. `FatalCode` exits with the code you pass. When the console is enabled, the fatal line includes a stack.
 - `LOG_SAMPLING_N` keeps 1 of every N events (the 1st, then every Nth after that). `1` keeps every event.
-- A `.env` file in the working directory is loaded when it is present. Values already set in the environment stay as they are.
+- A `.env` file in the working directory is loaded when it is present. Values already set in the environment stay the same.
 
 ## Install
 
@@ -147,4 +149,4 @@ Call `InitLogging` once from `main`, before other goroutines log. It sets zerolo
 
 ## License
 
-MIT 2025–2026 — Philip Andersen
+MIT 2026 — Philip Andersen
