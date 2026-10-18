@@ -1,5 +1,8 @@
 # Changelog
 
+## v.1.0.2 - 2026-10-18
+- Revert README because it didn't read simple enough.
+
 ## v.1.0.1 - 2026-10-18
 - Added tests for the JSON line, levels, sampling, caller, and the fatal exit status.
 - Rewrote the README around what InitLogging sets up.
